@@ -1,0 +1,9 @@
+{
+  "description": "Tesseract English LSTM model used by the OCR service. Downloaded and verified at build time by scripts/fetch-language-data.mjs; in production the service reads only this verified file.",
+  "file": "eng.traineddata",
+  "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int/eng.traineddata.gz",
+  "downloadSha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91",
+  "sha256": "5dc5d8d640a212c9d6184921ba103b186f50e0fed9ee716c53e6b312b400d747",
+  "size": 5199098,
+  "provenance": "Same file as the default URL Tesseract.js 7 uses (lstmOnly), pinned to @tesseract.js-data/eng@1.0.0. downloadSha256 matches jsDelivr's published hash and the file in the npm tarball verified against the registry's sha512 integrity."
+}

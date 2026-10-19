@@ -2,14 +2,22 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/server.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "fetch:lang-data": "node scripts/fetch-language-data.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && npm run fetch:lang-data",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.2.0"
+  },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^18.0.7",

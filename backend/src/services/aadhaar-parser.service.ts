@@ -14,8 +14,9 @@ import { isValidVerhoeff } from "../utils/verhoeff";
 const DOB_KEYWORD = /\bD[O0]B\b|DATE\s+OF\s+BIRTH/i;
 const YOB_KEYWORD = /\bY[O0]B\b|YEAR\s+OF\s+BIRTH/i;
 const ADDRESS_KEYWORD = /\bAdd?ress?\b\s*[:;-]?/i;
-// "Address" as a single OCR word, possibly with text glued after it.
-const ADDRESS_LABEL_WORD = /^Add?ress?\b\s*[:;-]?/i;
+// "Address" as a single OCR word, possibly with text glued after it, or with
+// a stray mark glued before it ("‘Address:") that OCR picked up nearby.
+const ADDRESS_LABEL_WORD = /^[^\p{L}\p{N}]{0,2}Add?ress?\b\s*[:;-]?/iu;
 const GENDER_WORD = /\b(FEMALE|MALE|TRANSGENDER)\b/i;
 // An Aadhaar number printed in masked form, e.g. "XXXX XXXX 1234". Only used
 // as evidence; the hidden digits are never reconstructed.

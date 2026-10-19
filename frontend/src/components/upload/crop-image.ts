@@ -25,6 +25,14 @@ const JPEG_QUALITY = 0.95
 // canvas actually fails.
 const SAFE_CANVAS_PIXELS = 4096 * 4096
 
+// Small crops are enlarged (same region, same aspect ratio) so their longer
+// side is at least this many pixels: on small photos the text is too small
+// for OCR to read reliably. In testing, 1200 px improved results without
+// losing any field that native size read; larger targets did lose fields.
+// Even a worst-case (random noise) 1200 x 1200 PNG stays under the 5 MB
+// upload limit (about 4.6 MB).
+const MIN_OUTPUT_LONG_SIDE = 1200
+
 export function loadImage(url: string): Promise<HTMLImageElement> {
   const image = new Image()
   image.decoding = 'async'
@@ -101,9 +109,10 @@ function croppedFileName(originalName: string, type: string): string {
 }
 
 /**
- * Creates the cropped image at the source's full resolution, in the same
- * format as the source (PNG stays PNG, JPEG stays JPEG). The output carries
- * no EXIF metadata; any EXIF rotation is already applied by the browser.
+ * Creates the cropped image at the source's full resolution (enlarged if the
+ * crop is small), in the same format as the source (PNG stays PNG, JPEG
+ * stays JPEG). The output carries no EXIF metadata; any EXIF rotation is
+ * already applied by the browser.
  */
 export async function createCroppedFile(
   source: File,
@@ -112,8 +121,10 @@ export async function createCroppedFile(
 ): Promise<File> {
   const type = source.type === 'image/png' ? 'image/png' : 'image/jpeg'
   const pixels = settings.area.width * settings.area.height
+  const longSide = Math.max(settings.area.width, settings.area.height)
+  const upscale = Math.max(1, MIN_OUTPUT_LONG_SIDE / longSide)
 
-  let blob = await renderToBlob(image, settings, type, 1)
+  let blob = await renderToBlob(image, settings, type, upscale)
   if (!blob && pixels > SAFE_CANVAS_PIXELS) {
     blob = await renderToBlob(image, settings, type, Math.sqrt(SAFE_CANVAS_PIXELS / pixels))
   }

@@ -26,7 +26,6 @@ export async function extractAadhaarDetails(
   if (response.data?.success !== true || !response.data.data?.aadhaar) {
     throw new Error('Unexpected response from the server')
   }
-  // The whole response body, so the UI can show it exactly as received.
   return response.data
 }
 

@@ -4,10 +4,8 @@ import type { AadhaarDetails } from '../types/ocr.types'
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
-// Shows the extracted Aadhaar details (the response's data.aadhaar object)
-// exactly as the API returned them, formatted with two-space indentation;
-// unread fields stay null. The Aadhaar number is already masked by the
-// server; nothing here unmasks or adds to it.
+// Shows data.aadhaar exactly as the API returned it. The Aadhaar number is
+// already masked by the server; nothing here unmasks it.
 export function JsonView({ details }: { details: AadhaarDetails }) {
   const json = useMemo(() => JSON.stringify(details, null, 2), [details])
   const [copyState, setCopyState] = useState<CopyState>('idle')

@@ -46,7 +46,6 @@ export type UserErrorKind =
   | 'network'
   | 'server'
 
-/** An error ready to show to the user. */
 export interface UserError {
   kind: UserErrorKind
   title: string

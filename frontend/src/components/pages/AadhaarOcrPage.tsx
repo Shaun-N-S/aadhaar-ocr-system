@@ -41,8 +41,8 @@ function fieldId(side: ImageSide): string {
   return `${side}-image`
 }
 
-// Images, previews and results live only in component state (memory). They
-// are never logged or written to localStorage/sessionStorage.
+// Privacy: images and results stay in component state only. Never log them or
+// write them to browser storage.
 export function AadhaarOcrPage() {
   const [images, setImages] = useState(NO_IMAGES)
   const [cropSession, setCropSession] = useState<CropSession | null>(null)

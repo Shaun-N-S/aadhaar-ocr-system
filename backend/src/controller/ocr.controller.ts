@@ -76,8 +76,6 @@ export const extractAadhaarDetails: RequestHandler = async (req, res) => {
     data: {
       message: API_MESSAGES.OCR.SUCCESS,
       aadhaar: details,
-      // Mean recognition confidence of the words the fields were read from
-      // (null if no field came from that image); not a probability.
       ocrConfidence: confidence,
     },
   });

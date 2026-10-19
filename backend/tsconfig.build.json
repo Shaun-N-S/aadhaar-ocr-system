@@ -1,0 +1,5 @@
+{
+  // Production build: same settings as tsconfig.json, without test code.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts", "src/test-utils"]
+}

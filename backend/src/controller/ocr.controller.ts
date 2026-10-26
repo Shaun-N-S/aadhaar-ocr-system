@@ -42,8 +42,6 @@ async function recognizeBothSides(
 export const extractAadhaarDetails: RequestHandler = async (req, res) => {
   const images = validateAadhaarImages(req.files);
 
-  // If the client disconnects, queued OCR for this request is dropped and
-  // no further passes start (a pass already running is allowed to finish).
   const clientGone = new AbortController();
   res.once("close", () => {
     if (!res.writableFinished) clientGone.abort();
@@ -76,8 +74,6 @@ export const extractAadhaarDetails: RequestHandler = async (req, res) => {
     data: {
       message: API_MESSAGES.OCR.SUCCESS,
       aadhaar: details,
-      // Mean recognition confidence of the words the fields were read from
-      // (null if no field came from that image); not a probability.
       ocrConfidence: confidence,
     },
   });

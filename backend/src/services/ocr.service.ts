@@ -26,8 +26,6 @@ import {
   readJpegOrientation,
 } from "../utils/image-header";
 
-// Re-exported so callers that build their own service with createOcrService
-// can keep importing everything from this module.
 export { createTesseractEngine, LanguageDataError };
 
 class OcrTimeoutError extends Error {
@@ -74,10 +72,10 @@ const EXIF_ROTATION: Partial<Record<number, number>> = {
   8: -Math.PI / 2,
 };
 
-// Tesseract.js only honours big-endian EXIF orientation (it pattern-matches
-// raw bytes), so orientation is applied here for both byte orders. The tag is
-// reset to 1 in a copy so Tesseract.js cannot rotate the image a second time.
-function applyExifOrientation(image: Buffer): { image: Buffer; rotation: number } {
+function applyExifOrientation(image: Buffer): {
+  image: Buffer;
+  rotation: number;
+} {
   const orientation = readJpegOrientation(image);
   const rotation = orientation ? EXIF_ROTATION[orientation.value] : undefined;
   if (!orientation || rotation === undefined) return { image, rotation: 0 };
@@ -107,9 +105,6 @@ function countConfidentWords(result: OcrResult): number {
     ).length;
 }
 
-// Cheap checks on the raw bytes before any decoding happens. Matching magic
-// bytes alone do not prove an image is safe to decode: a tiny compressed PNG
-// can declare billions of pixels, so dimensions are read from the header.
 function assertImageCanBeProcessed(image: Buffer, maxDimension: number): void {
   const format = detectImageFormat(image);
   if (!format) {
@@ -148,10 +143,6 @@ export function createOcrService(options: OcrServiceOptions) {
     createEngine,
   } = options;
 
-  // A fixed pool of slots, each lazily holding one engine. A job holds a slot
-  // for its whole run, so at most `workerCount` recognitions run at once.
-  // `jobsInFlight` counts running, waiting and reserved jobs and never exceeds
-  // `maxQueue`.
   const engines: (Promise<OcrEngine> | undefined)[] =
     Array(workerCount).fill(undefined);
   const freeSlots = engines.map((_engine, slot) => slot);
@@ -181,25 +172,23 @@ export function createOcrService(options: OcrServiceOptions) {
     }
   }
 
-  /**
-   * Reserves capacity for `jobs` images before an upload is buffered. The
-   * check and the increment happen synchronously, so concurrent requests
-   * can't all pass the check: at most `maxQueue` jobs are ever accepted.
-   */
   function reserve(jobs: number): OcrReservation {
     if (isShutDown) {
-      throw new HttpError(HTTP_STATUS.SERVICE_UNAVAILABLE, API_MESSAGES.OCR.UNAVAILABLE);
+      throw new HttpError(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        API_MESSAGES.OCR.UNAVAILABLE,
+      );
     }
     if (jobsInFlight + jobs > maxQueue) {
-      throw new HttpError(HTTP_STATUS.SERVICE_UNAVAILABLE, API_MESSAGES.OCR.BUSY);
+      throw new HttpError(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        API_MESSAGES.OCR.BUSY,
+      );
     }
     jobsInFlight += jobs;
     return new Reservation(jobs);
   }
 
-  // Waits for a free slot for at most `queueTimeoutMs`. A waiter that times
-  // out, is aborted, or is cancelled by shutdown leaves the queue, so it can
-  // never be handed a slot afterwards.
   function acquireSlot(signal: AbortSignal | undefined): Promise<number> {
     const free = freeSlots.pop();
     if (free !== undefined) return Promise.resolve(free);
@@ -211,7 +200,10 @@ export function createOcrService(options: OcrServiceOptions) {
         waitingJobs.splice(index, 1);
         waiter.reject(error);
       };
-      const timer = setTimeout(() => leave(new QueueTimeoutError()), queueTimeoutMs);
+      const timer = setTimeout(
+        () => leave(new QueueTimeoutError()),
+        queueTimeoutMs,
+      );
       const onAbort = () => leave(new OcrAbortedError());
       const cleanup = () => {
         clearTimeout(timer);
@@ -262,7 +254,6 @@ export function createOcrService(options: OcrServiceOptions) {
     return created;
   }
 
-  // Throw away an engine that failed or hung; the slot gets a fresh one later.
   function discardEngine(slot: number): void {
     const engine = engines[slot];
     engines[slot] = undefined;
@@ -273,8 +264,6 @@ export function createOcrService(options: OcrServiceOptions) {
     image: Buffer,
     { reservation, signal }: OcrJobOptions = {},
   ): Promise<OcrResult> {
-    // Join the queue by using one unit of reserved capacity. A call without a
-    // reservation reserves a single unit for itself (same capacity check).
     const capacity = reservation ?? reserve(1);
     if (!(capacity instanceof Reservation) || !capacity.take()) {
       throw new Error("OCR reservation has no capacity left");
@@ -283,7 +272,10 @@ export function createOcrService(options: OcrServiceOptions) {
     try {
       assertImageCanBeProcessed(image, maxImageDimension);
       if (isShutDown) {
-        throw new HttpError(HTTP_STATUS.SERVICE_UNAVAILABLE, API_MESSAGES.OCR.UNAVAILABLE);
+        throw new HttpError(
+          HTTP_STATUS.SERVICE_UNAVAILABLE,
+          API_MESSAGES.OCR.UNAVAILABLE,
+        );
       }
       if (signal?.aborted) throw new OcrAbortedError();
 
@@ -292,10 +284,16 @@ export function createOcrService(options: OcrServiceOptions) {
         slot = await acquireSlot(signal);
       } catch (error) {
         if (error instanceof QueueTimeoutError) {
-          throw new HttpError(HTTP_STATUS.SERVICE_UNAVAILABLE, API_MESSAGES.OCR.BUSY);
+          throw new HttpError(
+            HTTP_STATUS.SERVICE_UNAVAILABLE,
+            API_MESSAGES.OCR.BUSY,
+          );
         }
         if (error instanceof ShutdownError) {
-          throw new HttpError(HTTP_STATUS.SERVICE_UNAVAILABLE, API_MESSAGES.OCR.UNAVAILABLE);
+          throw new HttpError(
+            HTTP_STATUS.SERVICE_UNAVAILABLE,
+            API_MESSAGES.OCR.UNAVAILABLE,
+          );
         }
         throw error;
       }
@@ -303,8 +301,6 @@ export function createOcrService(options: OcrServiceOptions) {
       try {
         return await recognizeInSlot(slot, image, signal);
       } finally {
-        // Only reached once this job's recognition has finished (or timed out
-        // and its engine was discarded), so a slot is never shared.
         releaseSlot(slot);
       }
     } finally {
@@ -317,7 +313,6 @@ export function createOcrService(options: OcrServiceOptions) {
     image: Buffer,
     signal: AbortSignal | undefined,
   ): Promise<OcrResult> {
-    // The client may have left while this job waited; skip the work.
     if (signal?.aborted) throw new OcrAbortedError();
 
     try {
@@ -332,11 +327,12 @@ export function createOcrService(options: OcrServiceOptions) {
         );
       }
 
-      // All passes for this image share one time limit, which starts once a
-      // worker is free (waiting is bounded separately by queueTimeoutMs).
       const deadline = Date.now() + timeoutMs;
       const upright = applyExifOrientation(image);
-      const recognize = (extraRotation: number, options: RecognizeOptions = {}) => {
+      const recognize = (
+        extraRotation: number,
+        options: RecognizeOptions = {},
+      ) => {
         // A running pass is never interrupted; further passes are skipped
         // once the client has gone.
         if (signal?.aborted) throw new OcrAbortedError();
@@ -365,11 +361,6 @@ export function createOcrService(options: OcrServiceOptions) {
         }
       }
 
-      // Single-block segmentation often drops the large printed Aadhaar
-      // number. If no number evidence was read, one extra pass with
-      // automatic layout analysis looks for it; only its number/VID lines
-      // are added, so all other lines and fields come from the pass above.
-      // It runs in this slot and within the same deadline.
       if (
         !hasAadhaarNumberEvidence(result) &&
         Date.now() < deadline - MIN_RECOVERY_TIME_MS
@@ -384,15 +375,15 @@ export function createOcrService(options: OcrServiceOptions) {
           if (recovered.length > 0) {
             result = {
               ...result,
-              text: [result.text, ...recovered.map((line) => line.text)].join("\n"),
+              text: [result.text, ...recovered.map((line) => line.text)].join(
+                "\n",
+              ),
               lines: [...result.lines, ...recovered],
             };
           }
         } catch (error) {
           if (error instanceof OcrAbortedError) throw error;
-          // Keep the original result. The worker may still be busy (timeout)
-          // or keep the pass's settings, which Tesseract.js doesn't restore
-          // after a failure, so it is replaced.
+
           discardEngine(slot);
         }
       }
@@ -429,24 +420,22 @@ export function createOcrService(options: OcrServiceOptions) {
     }
   }
 
-  /**
-   * Whether an OCR engine can start. Cheap: it never runs recognition. The
-   * first call (and, after a failure, at most one call every 30 s) starts an
-   * engine in the background and reports "starting" until it is ready.
-   */
   function readiness(): OcrReadiness {
     if (isShutDown) return { ready: false, reason: "shutting-down" };
     const status = engineStatus;
     if (status.state === "ready") return { ready: true };
-    if (status.state === "starting") return { ready: false, reason: "starting" };
-    if (status.state === "failed" && Date.now() - status.at < READINESS_RETRY_MS) {
+    if (status.state === "starting")
+      return { ready: false, reason: "starting" };
+    if (
+      status.state === "failed" &&
+      Date.now() - status.at < READINESS_RETRY_MS
+    ) {
       return {
         ready: false,
         reason: status.languageData ? "language-data" : "unavailable",
       };
     }
-    // Starting slot 0's engine doesn't occupy the slot; the next job there
-    // reuses it.
+
     getEngine(0).catch(() => {});
     return { ready: false, reason: "starting" };
   }
@@ -464,7 +453,8 @@ export function createOcrService(options: OcrServiceOptions) {
   /** Stops accepting work: new and queued jobs get 503; running jobs finish. */
   function beginShutdown(): void {
     isShutDown = true;
-    for (const waiter of waitingJobs.splice(0)) waiter.reject(new ShutdownError());
+    for (const waiter of waitingJobs.splice(0))
+      waiter.reject(new ShutdownError());
   }
 
   /** Stops accepting work and terminates every engine. */

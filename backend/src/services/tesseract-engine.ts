@@ -14,10 +14,6 @@ import { isProduction } from "../config/env";
 import { API_MESSAGES } from "../constants/api-messages";
 import type { OcrEngine } from "../types/ocr.types";
 
-// English language data (~5 MB) lives here. It is model data only; images
-// never touch the disk. In development it is downloaded on first use; in
-// production only the verified copy installed at build time is used
-// ("npm run fetch:lang-data", run by "npm run build").
 const TESSERACT_CACHE_DIR = path.resolve(__dirname, "../../.tesseract-cache");
 const LANGUAGE_DATA = JSON.parse(
   readFileSync(path.resolve(__dirname, "../../language-data.json"), "utf8"),
@@ -46,10 +42,8 @@ async function verifyLanguageData(): Promise<void> {
   }
 }
 
-// The message Tesseract.js rejects with when Leptonica cannot decode an image.
 const DECODE_FAILURE_MESSAGE = "Error attempting to read image";
 
-/** The image bytes could not be decoded; the engine itself is still healthy. */
 export class ImageDecodeError extends Error {
   override name = "ImageDecodeError";
 }
@@ -64,22 +58,14 @@ export async function createTesseractEngine(): Promise<OcrEngine> {
 
   const worker = await createWorker("eng", OEM.LSTM_ONLY, {
     cachePath: TESSERACT_CACHE_DIR,
-    // Production: read only the verified local file. With "readOnly" nothing
-    // is written, and a local langPath (gzip off) means a missing file fails
-    // instead of falling back to a download.
     ...(isProduction && {
       cacheMethod: "readOnly",
       langPath: TESSERACT_CACHE_DIR,
       gzip: false,
     }),
-    // Without an errorHandler, Tesseract.js rethrows every failed job from
-    // inside a message listener, which crashes the whole process. The failure
-    // still reaches the caller through the rejected recognize() promise.
     errorHandler: () => {},
   });
 
-  // A crashed thread would otherwise emit an unhandled 'error' event (which
-  // also crashes the process) and leave its jobs pending forever.
   let threadExited = false;
   const thread: unknown = Reflect.get(worker, "worker");
   if (thread instanceof WorkerThread) {
@@ -97,9 +83,6 @@ export async function createTesseractEngine(): Promise<OcrEngine> {
         throw new Error("Tesseract worker thread has exited");
       }
 
-      // Tesseract.js applies Tesseract parameters passed here to this call
-      // only (SaveParameters/RestoreParameters). The default page
-      // segmentation, used otherwise, is a single text block.
       const callOptions: Partial<TesseractRecognizeOptions & WorkerParams> = {
         rotateRadians: options.rotateRadians ?? 0,
       };

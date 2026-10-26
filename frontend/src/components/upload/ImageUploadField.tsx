@@ -23,7 +23,6 @@ export interface ImageAsset {
 }
 
 export interface SideImage {
-  /** The file the user chose. */
   source: ImageAsset
   /** The file that will be submitted; null until the user confirms it. */
   output: ImageAsset | null

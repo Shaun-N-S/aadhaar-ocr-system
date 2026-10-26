@@ -6,35 +6,13 @@ import type {
 import type { OcrLine, OcrResult, OcrWord } from "../types/ocr.types";
 import { isValidVerhoeff } from "../utils/verhoeff";
 
-// Parses OCR output from the front and back of an Aadhaar card. Each field is
-// searched on both sides (users sometimes swap the images). A field is only
-// returned when exactly one distinct value is found; otherwise it is null.
-// Nothing here logs: the input and output are personal data.
-
 const DOB_KEYWORD = /\bD[O0]B\b|DATE\s+OF\s+BIRTH/i;
 const YOB_KEYWORD = /\bY[O0]B\b|YEAR\s+OF\s+BIRTH/i;
 const ADDRESS_KEYWORD = /\bAdd?ress?\b\s*[:;-]?/i;
-// "Address" as a single OCR word, possibly with text glued after it, or with
-// a stray mark glued before it ("‘Address:") that OCR picked up nearby.
 const ADDRESS_LABEL_WORD = /^[^\p{L}\p{N}]{0,2}Add?ress?\b\s*[:;-]?/iu;
 const GENDER_WORD = /\b(FEMALE|MALE|TRANSGENDER)\b/i;
-// An Aadhaar number printed in masked form, e.g. "XXXX XXXX 1234". Only used
-// as evidence; the hidden digits are never reconstructed.
 const MASKED_NUMBER = /(?<![\w*])[Xx*]{4}\s?[Xx*]{4}\s?\d{4}(?!\d)/;
 
-// --- Authority phrases, matched with limited OCR tolerance -----------------
-// Document detection and a few line checks rely on fixed printed phrases. OCR
-// often gets one character wrong ("Authorty", "Govemment", "VlD") or emits a
-// ligature ("ﬁ"), so these phrases are matched word by word:
-//  - text is NFKC-normalized first, which turns ligatures such as "ﬁ" into
-//    their letters;
-//  - characters OCR confuses with I and O in printed capitals ("l", "1", "|",
-//    "!" and "0"), and "rn" read as "m", are mapped before comparing;
-//  - a word of 6+ letters may then differ by one edit (insert, delete or
-//    substitute); shorter words must match exactly;
-//  - at most 2 edits per phrase.
-// The tolerance applies only to the phrases below; the word "Aadhaar" is
-// deliberately never used as evidence, because forms and letters mention it.
 const UIDAI_PHRASES = [["UNIQUE", "IDENTIFICATION", "AUTHORITY"], ["UIDAI"]];
 const GOVERNMENT_PHRASES = [["GOVERNMENT", "OF", "INDIA"]];
 const VID_PHRASES = [["VID"], ["VIRTUAL", "ID"]];
@@ -88,14 +66,12 @@ function containsPhrase(text: string, phrases: string[][]): boolean {
   });
 }
 
-/** Branding of the issuer (UIDAI), printed on Aadhaar cards and letters. */
 const hasUidaiBranding = (text: string) => containsPhrase(text, UIDAI_PHRASES);
-/** A generic header shared by many government documents. */
+
 const hasGovernmentHeader = (text: string) =>
   containsPhrase(text, GOVERNMENT_PHRASES);
 const hasVidLabel = (text: string) => containsPhrase(text, VID_PHRASES);
 
-// Characters Tesseract commonly confuses with digits in printed numbers.
 const DIGIT_LOOKALIKES: Record<string, string> = {
   O: "0",
   o: "0",
@@ -106,21 +82,14 @@ const DIGIT_LOOKALIKES: Record<string, string> = {
   B: "8",
 };
 
-// Runs of 4-character groups such as "1234 5678 9012", tolerating lookalikes.
-// A 16-digit VID forms a longer run and is therefore never a 12-digit match.
 const DIGIT_GROUP_RUN =
   /(?<![\w|])[\dOoIlSB|]{4}(?:[ -]?[\dOoIlSB|]{4})+(?![\w|])/g;
 const VID_NUMBER = /\d{4}\s?\d{4}\s?\d{4}\s?\d{4}/;
-// DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY, tolerating O/I/l misread for digits.
 const DATE =
   /(?<![\dOoIl])([\dOoIl]{1,2})\s?[/.-]\s?([\dOoIl]{1,2})\s?[/.-]\s?([\dOoIl]{4})(?![\dOoIl])/;
-// On bilingual cards the label reads "जन्म तिथि/DOB:". OCR often garbles the
-// English part ("/pos:", "/poB."), but keeps its shape: a slash, a short
-// token and punctuation directly before the date.
+
 const SLASH_LABEL_BEFORE_DATE = /\/\s*[A-Za-z0-9]{2,4}\s*[:.;,]\s*$/;
-// A DOB label ending its line, e.g. "…/Date of Birth/DOB:". A trailing full
-// stop is not allowed, which excludes sentences such as the card's
-// "…not of citizenship or date of birth." disclaimer.
+
 const DOB_LABEL_AT_END = /(?:\bD[O0]B|DATE\s+OF\s+BIRTH)\s*:?\s*$/i;
 // Dates that are not a date of birth.
 const OTHER_DATE_LABELS =
@@ -129,31 +98,21 @@ const YEAR = /(?<!\d)((?:19|20)\d{2})(?!\d)/;
 const PINCODE = /(?<!\d)([1-9]\d{5})(?!\d)/g;
 const HAS_PINCODE = /(?<!\d)[1-9]\d{5}(?!\d)/;
 
-// Lines containing these words are labels, headings, relation lines or the
-// card's disclaimer, never the cardholder's name.
 const NON_NAME_WORDS =
   /GOVERNMENT|INDIA|AADHAA?R|UNIQUE|IDENTIFICATION|AUTHORITY|\bD[O0]B\b|BIRTH|\bY[O0]B\b|FEMALE|\bMALE\b|TRANSGENDER|ADDRESS|\bVID\b|ENROL|PROOF|IDENTITY|CITIZEN|VERIF|AUTHENTICAT|\bQR\b|ISSUE|DOWNLOAD|FATHER|MOTHER|HUSBAND|GUARDIAN|\b[SDWC]\s?\/\s?O\b|^\s*To\b/i;
-// Name words with lower Tesseract confidence are usually misread Hindi text.
 const MIN_NAME_CONFIDENCE = 60;
-// Stop looking for the name above an anchor across a gap larger than this
-// many line heights (the name belongs to the same block of details).
+
 const NAME_MAX_LINE_GAP = 3;
 const MAX_ADDRESS_LINES = 6;
-// Lines after the address: the Aadhaar number (complete or masked), VID, or
-// UIDAI contact details.
+
 const ADDRESS_STOP =
   /\bVID\b|UIDAI|www\.|@|AADHAA?R|\d{4}\s?\d{4}\s?\d{4}|[Xx*]{4}\s?[Xx*]{4}\s?\d{4}/i;
-// Column and block limits for the address, in multiples of the label height.
 const ADDRESS_LEFT_TOLERANCE = 1.5;
 const ADDRESS_MAX_LINE_GAP = 2.5;
-// A horizontal gap this wide between words is a column gutter, not a space.
 const ADDRESS_MAX_WORD_GAP = 3;
-// Once a column has a few words, a gap this many times wider than the spaces
-// between them (and at least one label height) also ends it: text next to the
-// address, such as the QR code read as "words", must not join its line.
+
 const ADDRESS_GAP_TO_SPACE_RATIO = 4;
 
-/** A value found in the text, with the OCR words it was read from. */
 interface Candidate<T> {
   value: T;
   words: OcrWord[];
@@ -213,17 +172,12 @@ function findAadhaarNumbers(lines: OcrLine[]): Candidate<string>[] {
       const raw = run.replace(/[ -]/g, "");
       if (raw.length !== 12) continue;
 
-      // Allow at most one lookalike per group of four, so words made of
-      // letters like O, S and B are never read as numbers.
       const groups = raw.match(/.{4}/g) ?? [];
       if (!groups.every((group) => (group.match(/\d/g) ?? []).length >= 3)) {
         continue;
       }
 
       const digits = replaceLookalikes(raw);
-      // Aadhaar numbers never start with 0 or 1 and end in a Verhoeff digit.
-      // A valid checksum only rules out misreads; it proves nothing about
-      // whether the document is genuine.
       if (/^[2-9]/.test(digits) && isValidVerhoeff(digits)) {
         numbers.push({ value: digits, words: wordsIn(line, run) });
       }
@@ -237,21 +191,12 @@ function maskAadhaarNumber(digits: string): string {
 }
 
 function hasVid(lines: OcrLine[]): boolean {
-  return lines.some(
-    ({ text }) => hasVidLabel(text) && VID_NUMBER.test(text),
-  );
+  return lines.some(({ text }) => hasVidLabel(text) && VID_NUMBER.test(text));
 }
 
-// Three or more groups of four digits (or digit lookalikes), as in an
-// Aadhaar number or a VID.
 const NUMBER_EVIDENCE_RUN =
   /(?<![\w|])[\dOoIlSB|]{4}(?:[ -]?[\dOoIlSB|]{4}){2,}(?![\w|])/;
 
-/**
- * Whether OCR output already holds a checksum-valid or masked Aadhaar number,
- * using the same rules as extraction. The OCR service uses this to decide on
- * a number-recovery pass.
- */
 export function hasAadhaarNumberEvidence(result: OcrResult): boolean {
   return (
     findAadhaarNumbers(linesOf(result)).length > 0 ||
@@ -259,11 +204,6 @@ export function hasAadhaarNumberEvidence(result: OcrResult): boolean {
   );
 }
 
-/**
- * Whether a line from a recovery pass may hold number evidence (an Aadhaar or
- * VID number, a masked number, or a VID label) and is worth adding. Added
- * lines still go through all checksum, VID and masking rules.
- */
 export function isNumberEvidenceLine(text: string): boolean {
   const normalized = text.normalize("NFKC");
   return (
@@ -287,9 +227,6 @@ function toValidDate(day: number, month: number, year: number): string | null {
   return `${pad(day)}/${pad(month)}/${year}`;
 }
 
-// A line holding the date of birth: a date with either a DOB label (e.g.
-// "DOB:", "Date of Birth/DOB:") or the "/label:" shape of a garbled bilingual
-// label, and no other kind of date.
 function matchDateOfBirth(text: string): RegExpMatchArray | null {
   if (OTHER_DATE_LABELS.test(text)) return null;
   const match = text.match(DATE);
@@ -300,10 +237,6 @@ function matchDateOfBirth(text: string): RegExpMatchArray | null {
   return labelled ? match : null;
 }
 
-// OCR sometimes wraps a long label ("जन्म तिथि/Date of Birth/DOB:") onto its
-// own line, leaving the date alone on the next one. That pairing is accepted
-// only when the label ends its line and the next line holds nothing but the
-// date, so sentences that merely mention a date of birth don't qualify.
 function matchWrappedDateOfBirth(
   labelText: string,
   dateText: string,
@@ -311,7 +244,9 @@ function matchWrappedDateOfBirth(
   if (!DOB_LABEL_AT_END.test(labelText) || DATE.test(labelText)) return null;
   if (OTHER_DATE_LABELS.test(labelText)) return null;
   const match = dateText.match(DATE);
-  const rest = match ? dateText.replace(match[0], "").replace(/[\s:.,;|]/g, "") : "x";
+  const rest = match
+    ? dateText.replace(match[0], "").replace(/[\s:.,;|]/g, "")
+    : "x";
   return match && rest === "" ? match : null;
 }
 
@@ -374,10 +309,6 @@ function findGenders(lines: OcrLine[]): Candidate<Gender>[] {
 
 // --- Name ------------------------------------------------------------------
 
-// Whether `word`, at the edge of a name line, is OCR noise rather than part of
-// the name: a token without letters ("|", "-"), a single lowercase letter, or
-// a single character standing well apart from the name (a photo or frame
-// edge read as "I" or "l"). A real initial sits at normal word spacing.
 function isEdgeNoise(word: OcrWord, neighbour: OcrWord | undefined): boolean {
   if (!/[A-Za-z]/.test(word.text) || /^[a-z]$/.test(word.text)) return true;
   if (word.text.length !== 1 || !word.bbox || !neighbour?.bbox) return false;
@@ -400,7 +331,6 @@ function asName(line: OcrLine): Candidate<string> | null {
     words.pop();
   }
 
-  // Strip stray punctuation at the edges, e.g. "Ravi Kumar Test,".
   const candidate = normalizeWhitespace(
     words.map((word) => word.text).join(" "),
   ).replace(/^[^A-Za-z]+|[^A-Za-z.]+$/g, "");
@@ -410,21 +340,17 @@ function asName(line: OcrLine): Candidate<string> | null {
     candidate.length <= 60 &&
     parts.length <= 5 &&
     parts.some((part) => /^[A-Za-z]{3,}/.test(part)) &&
-    // Names are printed in Title Case or capitals; a lowercase start ("ar
-    // Test") means OCR lost part of the name, so the fragment is rejected.
     parts.every((part) => /^[A-Z]/.test(part));
   if (!looksLikeName) return null;
 
-  // Confidence of the name's own words, so noise elsewhere on the line
-  // doesn't count against it (or for it).
   const confidence =
     words.reduce((sum, word) => sum + word.confidence, 0) / words.length;
   return confidence >= MIN_NAME_CONFIDENCE ? { value: candidate, words } : null;
 }
 
-// The top and bottom of a group of words; words without a box are ignored,
-// and null means none had one.
-function verticalExtent(words: OcrWord[]): { top: number; bottom: number } | null {
+function verticalExtent(
+  words: OcrWord[],
+): { top: number; bottom: number } | null {
   const boxes = words.map((word) => word.bbox).filter((box) => box !== null);
   if (boxes.length === 0) return null;
   return {
@@ -433,12 +359,6 @@ function verticalExtent(words: OcrWord[]): { top: number; bottom: number } | nul
   };
 }
 
-// On the front, the English name is printed above the date of birth (or year
-// of birth), which is followed by the gender. Each of those lines that is
-// found serves as an anchor. From each anchor the lines above are checked in
-// turn, skipping labels, dates and unreadable text, up to the "Government of
-// India" heading or a large vertical gap; the first name-like line is that
-// anchor's candidate. Anchors that disagree leave the name null.
 function findNames(lines: OcrLine[]): Candidate<string>[] {
   const anchors = [
     lines.findIndex((_line, index) => dobMatchAt(lines, index) !== null),
@@ -482,11 +402,6 @@ function findNames(lines: OcrLine[]): Candidate<string>[] {
 
 // --- Address ---------------------------------------------------------------
 
-// The relation prefix that starts most addresses ("C/O:", "S/O", "D/O:",
-// "W/O"), with its slash misread as I, l or | and/or its O as 0 ("CIO:",
-// "S/0:"). Only those two glyphs are corrected, and only when the first
-// letter was read as an uppercase C, S, D or W; a misread first letter
-// ("5/0:", "$/0:") is ambiguous and left as read.
 const MISREAD_RELATION_PREFIX = /^([CSDW])[/|Il][O0](:|(?=[\s,]|$))/;
 
 function joinAddressParts(parts: string[]): string {
@@ -498,12 +413,8 @@ function joinAddressParts(parts: string[]): string {
     .replace(MISREAD_RELATION_PREFIX, "$1/O$2");
 }
 
-// A printed border or divider, which OCR reads as a "word" such as "|".
 const RULE_GLYPH = /^[|¦!\][]+$/;
 
-// The words of one column: starting at `left`, in reading order, up to the
-// first gap wide enough to be a gutter, or a printed divider, before another
-// column.
 function columnWords(words: OcrWord[], left: number, unit: number): OcrWord[] {
   const sorted = words
     .filter((word) => word.bbox && word.bbox.x0 >= left)
@@ -511,7 +422,6 @@ function columnWords(words: OcrWord[], left: number, unit: number): OcrWord[] {
   const column: OcrWord[] = [];
   const spaces: number[] = [];
   for (const word of sorted) {
-    // A divider ends the column; one before the first word is a left border.
     if (RULE_GLYPH.test(word.text)) {
       if (column.length > 0) break;
       continue;
@@ -542,12 +452,6 @@ function median(values: number[]): number {
 const sameText = (a: string, b: string) =>
   normalizeWhitespace(a).toLowerCase() === normalizeWhitespace(b).toLowerCase();
 
-// Bilingual cards print the Hindi and English addresses side by side, and
-// OCR often merges both columns into one line. Using word positions, only
-// the column that starts at the "Address" label is kept, line by line from
-// top to bottom, until the PIN code, a line that clearly isn't address text,
-// a large vertical gap, or a fixed number of lines. A line repeating one
-// already taken (duplicated address text) is skipped.
 function findAddresses(lines: OcrLine[]): Candidate<string>[] {
   for (const [lineIndex, line] of lines.entries()) {
     const labelIndex = line.words.findIndex((word) =>
@@ -595,7 +499,8 @@ function findAddresses(lines: OcrLine[]): Candidate<string>[] {
 
     let added = 0;
     for (const { words, top, bottom } of below) {
-      if (added >= MAX_ADDRESS_LINES || HAS_PINCODE.test(parts.join(" "))) break;
+      if (added >= MAX_ADDRESS_LINES || HAS_PINCODE.test(parts.join(" ")))
+        break;
       if (top - previousBottom > unit * ADDRESS_MAX_LINE_GAP) break;
       const text = words.map((word) => word.text).join(" ");
       if (ADDRESS_STOP.test(text)) break;
@@ -702,21 +607,11 @@ export function parseAadhaar(
     pincode: findPincode(address),
   };
 
-  // Is this an Aadhaar document? Detection is separate from field extraction:
-  // a masked or unreadable number must not reject an otherwise clear card.
-  // No single signal is enough. Forms mention "Aadhaar", "Government of
-  // India" heads many documents, and any 12-digit number has a 1 in 10 chance
-  // of passing the checksum. So either:
-  //  - UIDAI branding plus any other evidence, or
-  //  - the government header plus evidence of an Aadhaar number (a valid
-  //    complete number, a masked "XXXX XXXX 1234" number, or a VID).
   const allText = `${front.text}\n${back.text}`.normalize("NFKC");
   const brandingFound = hasUidaiBranding(allText);
   const headerFound = hasGovernmentHeader(allText);
   const numberEvidenceFound =
-    aadhaarNumber !== null ||
-    MASKED_NUMBER.test(allText) ||
-    sides.some(hasVid);
+    aadhaarNumber !== null || MASKED_NUMBER.test(allText) || sides.some(hasVid);
   const identityFieldsFound =
     dateOfBirth !== null || yearOfBirth !== null || gender !== null;
   const documentDetected =

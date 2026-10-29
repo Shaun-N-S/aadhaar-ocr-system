@@ -1,19 +1,56 @@
 import cors from "cors";
-import express from "express";
-import { env } from "./config/env";
-import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
-import routes from "./routes";
+import express, { type Express, type RequestHandler } from "express";
+import type { HealthController } from "./controllers/health.controllers";
+import type { OcrController } from "./controllers/ocr.controllers";
+import { translateDomainErrors } from "./middlewares/domain-error.middleware";
+import { errorHandler, notFoundHandler } from "./middlewares/error.middleware";
+import { HealthRoute } from "./routes/health.routes";
+import { OcrRoute } from "./routes/ocr.routes";
 
-const app = express();
+/** What the Express application needs from the dependency container. */
+export interface AppDependencies {
+  frontendUrl: string;
+  ocrController: OcrController;
+  healthController: HealthController;
+  reserveOcrCapacity: RequestHandler;
+  uploadAadhaarImages: RequestHandler;
+}
 
-app.disable("x-powered-by");
+export class App {
+  private app: Express;
 
-app.use(cors({ origin: env.FRONTEND_URL }));
-app.use(express.json({ limit: "100kb" }));
+  constructor(private container: AppDependencies) {
+    this.app = express();
+    this.setMiddleware();
+    this.setRoutes();
+    this.setErrorHandling();
+  }
 
-app.use("/api", routes);
+  private setMiddleware() {
+    this.app.disable("x-powered-by");
+    this.app.use(cors({ origin: this.container.frontendUrl }));
+    this.app.use(express.json({ limit: "100kb" }));
+  }
 
-app.use(notFoundHandler);
-app.use(errorHandler);
+  private setRoutes() {
+    const ocrRoute = new OcrRoute(
+      this.container.ocrController,
+      this.container.reserveOcrCapacity,
+      this.container.uploadAadhaarImages,
+    );
+    const healthRoute = new HealthRoute(this.container.healthController);
 
-export default app;
+    this.app.use("/api/ocr", ocrRoute.getRouter());
+    this.app.use("/api", healthRoute.getRouter());
+  }
+
+  private setErrorHandling() {
+    this.app.use(notFoundHandler);
+    this.app.use(translateDomainErrors);
+    this.app.use(errorHandler);
+  }
+
+  public getApp() {
+    return this.app;
+  }
+}

@@ -1,11 +1,28 @@
-import { Router } from "express";
-import { extractAadhaarDetails } from "../controller/ocr.controller";
-import { reserveOcrCapacity } from "../middleware/ocr-capacity.middleware";
-import { uploadAadhaarImages } from "../middleware/upload.middleware";
+import express, { type RequestHandler } from "express";
+import type { OcrController } from "../controllers/ocr.controllers";
 
-const router = Router();
+export class OcrRoute {
+  private router = express.Router();
 
-// Capacity is reserved before the upload is buffered.
-router.post("/", reserveOcrCapacity, uploadAadhaarImages, extractAadhaarDetails);
+  constructor(
+    private controller: OcrController,
+    private reserveOcrCapacity: RequestHandler,
+    private uploadAadhaarImages: RequestHandler,
+  ) {
+    this.init();
+  }
 
-export default router;
+  private init() {
+    // Capacity is reserved before the upload is buffered.
+    this.router.post(
+      "/",
+      this.reserveOcrCapacity,
+      this.uploadAadhaarImages,
+      (req, res, next) => this.controller.extract(req, res, next),
+    );
+  }
+
+  public getRouter() {
+    return this.router;
+  }
+}

@@ -1,6 +1,10 @@
 import { env } from "./config/env";
-import app from "./app";
-import { ocrService } from "./services/ocr.service";
+import { container } from "./config/container";
+import { App } from "./app";
+import type { IOcrLifecycle } from "./services/interfaces/IOcr.services";
+
+const app = new App(container).getApp();
+const ocrService: IOcrLifecycle = container.ocrService;
 
 // On shutdown, queued OCR jobs are refused at once, so in-flight requests
 // need at most one image's OCR time (OCR_TIMEOUT_MS) to finish, plus a

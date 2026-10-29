@@ -1,3 +1,5 @@
+import type { OcrReservation } from "../services/ocr/ocr-capacity";
+
 export type ImageFormat = "jpeg" | "png";
 
 export interface ImageDimensions {
@@ -48,31 +50,8 @@ export interface RecognizeOptions {
   pageSegMode?: "automatic";
 }
 
-/** The OCR backend the service drives; Tesseract in production, a fake in tests. */
-export interface OcrEngine {
-  recognize(image: Buffer, options?: RecognizeOptions): Promise<OcrResult>;
-  terminate(): Promise<void>;
-}
-
-export interface OcrServiceOptions {
-  /** Number of engines (workers) that may run recognition in parallel. */
-  workerCount: number;
-  /** Maximum jobs running or waiting; further jobs are rejected as busy. */
-  maxQueue: number;
-  /** Per-image recognition time limit, once a worker is free. */
-  timeoutMs: number;
-  /** Maximum time a job may wait for a free worker. */
-  queueTimeoutMs: number;
-  /** Maximum accepted width or height in pixels. */
-  maxImageDimension: number;
-  createEngine: () => Promise<OcrEngine>;
-}
-
 /** Queue capacity reserved for a request before its upload is read. */
-export interface OcrReservation {
-  /** Returns capacity no job has used yet. Safe to call more than once. */
-  release(): void;
-}
+export type { OcrReservation };
 
 export interface OcrJobOptions {
   /** Capacity reserved earlier; the job uses it instead of joining the queue. */

@@ -4,16 +4,10 @@ import { z } from "zod";
 
 config({ path: path.resolve(__dirname, "../../.env"), quiet: true });
 
-// Used only outside production, so local development needs no .env.
 const DEVELOPMENT_FRONTEND_URL = "http://localhost:5173";
 
-// The frontend's Axios timeout (frontend/src/components/services/api-client.ts)
-// is 120 s. Waiting for a worker plus OCR must finish well within it, leaving
-// time for the upload and the response.
 const MAX_SERVER_OCR_BUDGET_MS = 110_000;
 
-// Browsers send just the origin ("https://ocr.example.com") and CORS compares
-// it exactly, so a configured path or trailing slash is reduced to the origin.
 const origin = z
   .url({ protocol: /^https?$/ })
   .transform((value) => new URL(value).origin);
@@ -24,7 +18,6 @@ const envSchema = z
       .enum(["development", "production"])
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(5000),
-    // An empty value (common in hosting dashboards) counts as unset.
     FRONTEND_URL: z.preprocess(
       (value) => (value === "" ? undefined : value),
       origin.optional(),

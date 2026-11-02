@@ -9,13 +9,10 @@ import type { IAadhaarParser } from "./interfaces/IAadhaarParser.services";
 import type { ITextRecognizer } from "./interfaces/IOcr.services";
 import { OcrError } from "./ocr/ocr.errors";
 
-/** The images were read, but the text doesn't look like an Aadhaar card. */
 export class NotAadhaarCardError extends Error {
   override name = "NotAadhaarCardError";
 }
 
-// The extraction workflow, independent of HTTP: recognize both sides, parse
-// them together, and reject text that isn't an Aadhaar card.
 export class ExtractAadhaarDetailsService implements IAadhaarExtractionService {
   constructor(
     private readonly recognizer: ITextRecognizer,
@@ -36,8 +33,6 @@ export class ExtractAadhaarDetailsService implements IAadhaarExtractionService {
     return { details, confidence };
   }
 
-  // Both images are recognized even if one fails, so the client always gets
-  // the error of the first side, attributed to its field name.
   private async recognizeBothSides(
     images: AadhaarImageBuffers,
     options: OcrJobOptions,

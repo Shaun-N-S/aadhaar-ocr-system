@@ -7,7 +7,6 @@ import { errorHandler, notFoundHandler } from "./middlewares/error.middleware";
 import { HealthRoute } from "./routes/health.routes";
 import { OcrRoute } from "./routes/ocr.routes";
 
-/** What the Express application needs from the dependency container. */
 export interface AppDependencies {
   frontendUrl: string;
   ocrController: OcrController;

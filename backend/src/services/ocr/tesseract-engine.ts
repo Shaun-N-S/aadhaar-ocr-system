@@ -37,8 +37,7 @@ export interface TesseractEngineConfig {
 
 const DECODE_FAILURE_MESSAGE = "Error attempting to read image";
 
-// Creates Tesseract workers. Production reads only the language data
-// installed and verified at build time; development downloads it on first use.
+
 export class TesseractEngineFactory implements IOcrEngineFactory {
   constructor(private readonly config: TesseractEngineConfig) {}
 
@@ -47,7 +46,6 @@ export class TesseractEngineFactory implements IOcrEngineFactory {
     if (production) {
       await this.verifyLanguageData();
     } else {
-      // Tesseract.js silently skips caching if the directory doesn't exist.
       await mkdir(cacheDir, { recursive: true });
     }
 

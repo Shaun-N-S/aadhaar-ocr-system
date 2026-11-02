@@ -6,8 +6,7 @@ import { OcrAbortedError } from "../services/ocr/ocr.errors";
 import type { AadhaarExtraction } from "../types/aadhaar.types";
 import { validateAadhaarImages } from "../validators/upload.validator";
 
-// HTTP only: reads the uploaded files, cancels the work if the client goes
-// away, and maps the extraction result to the response body.
+
 export class OcrController {
   constructor(private readonly extraction: IAadhaarExtractionService) {}
 
@@ -32,7 +31,6 @@ export class OcrController {
         },
       );
     } catch (error) {
-      // Nobody is waiting for a response.
       if (error instanceof OcrAbortedError) return;
       throw error;
     }

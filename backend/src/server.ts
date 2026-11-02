@@ -6,11 +6,6 @@ import type { IOcrLifecycle } from "./services/interfaces/IOcr.services";
 const app = new App(container).getApp();
 const ocrService: IOcrLifecycle = container.ocrService;
 
-// On shutdown, queued OCR jobs are refused at once, so in-flight requests
-// need at most one image's OCR time (OCR_TIMEOUT_MS) to finish, plus a
-// buffer. The hosting platform must allow at least this long between SIGTERM
-// and a forced kill (e.g. Kubernetes terminationGracePeriodSeconds; Docker
-// `stop --time`), or OCR_TIMEOUT_MS should be lowered to fit.
 const SHUTDOWN_GRACE_MS = env.OCR_TIMEOUT_MS + 5_000;
 
 const server = app.listen(env.PORT, (error) => {
@@ -20,7 +15,6 @@ const server = app.listen(env.PORT, (error) => {
   }
   console.log(`API listening on port ${env.PORT} (${env.NODE_ENV})`);
 
-  // Start an OCR engine in the background so /api/ready reflects it.
   void ocrService.warmUp().then((readiness) => {
     if (readiness.ready) console.log("OCR engine ready");
     else console.error(`OCR engine not ready: ${readiness.reason}`);
@@ -34,13 +28,10 @@ function shutdown(signal: NodeJS.Signals): void {
   isShuttingDown = true;
   console.log(`${signal} received, shutting down`);
 
-  // Refuse new and queued OCR work; jobs already running may finish.
   ocrService.beginShutdown();
-  // Stop accepting connections; closes once in-flight responses are sent.
   server.close(() => {
     void ocrService.shutdown().finally(() => process.exit(0));
   });
-  // Never hang: after the grace period, terminate the workers and exit.
   setTimeout(() => {
     console.error("Shutdown grace period elapsed; exiting");
     void ocrService.shutdown().finally(() => process.exit(1));

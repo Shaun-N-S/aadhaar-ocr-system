@@ -46,9 +46,7 @@ function toHttpError(
     }
   }
 
-  // Anything else raised while parsing (e.g. busboy's "Unexpected end of
-  // form") means the multipart body itself is invalid. Memory storage does no
-  // I/O, so these are client errors rather than server faults.
+
   return new HttpError(
     HTTP_STATUS.BAD_REQUEST,
     API_MESSAGES.UPLOAD.MALFORMED_REQUEST,
@@ -58,8 +56,7 @@ function toHttpError(
 export function createUploadAadhaarImages(
   limits: UploadLimits,
 ): RequestHandler {
-  // Memory storage: images exist only as Buffers on the request and are never
-  // written to disk. The limits bound memory use to ~2 x the upload limit.
+
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {

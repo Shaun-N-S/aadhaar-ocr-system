@@ -18,9 +18,7 @@ import { OcrAbortedError, OcrError } from "./ocr.errors";
 import type { OcrWorkerPool } from "./ocr-worker-pool";
 import type { RecognitionPipeline } from "./recognition-pipeline";
 
-// Cheap checks on the raw bytes before any decoding happens. Matching magic
-// bytes alone do not prove an image is safe to decode: a tiny compressed PNG
-// can declare billions of pixels, so dimensions are read from the header.
+
 function assertImageCanBeProcessed(image: Buffer, maxDimension: number): void {
   const format = detectImageFormat(image);
   if (!format) throw new OcrError("UNSUPPORTED_IMAGE");
@@ -41,9 +39,6 @@ export interface OcrServiceDependencies {
   maxImageDimension: number;
 }
 
-// The OCR service other layers use. It composes admission control, the
-// worker pool and the recognition passes, and exposes one small interface
-// per kind of consumer.
 export class OcrService
   implements ITextRecognizer, IOcrAdmission, IOcrHealth, IOcrLifecycle
 {

@@ -40,13 +40,10 @@ function applyExifOrientation(image: Buffer): {
   return { image: upright, rotation };
 }
 
-// A pass is considered useful when it read a few words confidently. Sideways
-// or upside-down text produces almost none, which triggers the retries below.
 const CONFIDENT_WORD_SCORE = 80;
 const MIN_CONFIDENT_WORDS = 4;
 const RETRY_ROTATIONS = [Math.PI / 2, Math.PI, -Math.PI / 2];
-// The number-recovery pass is skipped when less than this much of the
-// image's time limit is left.
+
 const MIN_RECOVERY_TIME_MS = 1000;
 
 function countConfidentWords(result: OcrResult): number {
@@ -102,8 +99,7 @@ export class RecognitionPipeline {
       let result = await recognize(0);
       let resultRotation = 0;
       let bestScore = countConfidentWords(result);
-      // Retry other orientations only when the first pass found little
-      // usable text, stopping at the first one that does.
+
       for (const extraRotation of RETRY_ROTATIONS) {
         if (bestScore >= MIN_CONFIDENT_WORDS || Date.now() >= deadline) break;
         const attempt = await recognize(extraRotation);

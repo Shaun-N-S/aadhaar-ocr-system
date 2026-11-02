@@ -25,23 +25,17 @@ type EngineStatus =
 // A failed engine start is retried by a readiness check at most this often.
 const READINESS_RETRY_MS = 30_000;
 
-/** The engine a job may use, and a way to throw it away if it misbehaved. */
 export interface EngineLease {
   readonly engine: IOcrEngine;
   discard(): void;
 }
 
 export interface OcrWorkerPoolOptions {
-  /** Number of engines that may run recognition in parallel. */
   workerCount: number;
-  /** Maximum time a job may wait for a free worker. */
   queueTimeoutMs: number;
   engineFactory: IOcrEngineFactory;
 }
 
-// A fixed set of worker slots, each lazily holding one engine. A job holds a
-// slot for its whole run, so at most `workerCount` recognitions run at once;
-// other jobs wait in order for a bounded time.
 export class OcrWorkerPool {
   readonly #engines: (Promise<IOcrEngine> | undefined)[];
   readonly #freeSlots: number[];
@@ -62,10 +56,6 @@ export class OcrWorkerPool {
     this.#engineFactory = engineFactory;
   }
 
-  /**
-   * Runs `work` with a worker's engine once a slot is free. The slot is
-   * released only after `work` has settled, so a slot is never shared.
-   */
   async run<T>(
     signal: AbortSignal | undefined,
     work: (lease: EngineLease) => Promise<T>,
@@ -119,13 +109,10 @@ export class OcrWorkerPool {
   async warmUp(): Promise<OcrReadiness> {
     try {
       await this.#getEngine(0);
-    } catch {
-      // The failure is reflected in readiness().
-    }
+    } catch {}
     return this.readiness();
   }
 
-  /** Refuses further work: waiting jobs are rejected at once. */
   close(): void {
     this.#closed = true;
     for (const waiter of this.#waiting.splice(0))
@@ -141,9 +128,6 @@ export class OcrWorkerPool {
     );
   }
 
-  // Waits for a free slot for at most `queueTimeoutMs`. A waiter that times
-  // out, is aborted, or is cancelled by shutdown leaves the queue, so it can
-  // never be handed a slot afterwards.
   #acquireSlot(signal: AbortSignal | undefined): Promise<number> {
     const free = this.#freeSlots.pop();
     if (free !== undefined) return Promise.resolve(free);

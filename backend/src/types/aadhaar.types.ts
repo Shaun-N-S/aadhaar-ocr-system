@@ -1,3 +1,5 @@
+import type { IMAGE_FIELDS } from "../validators/upload.validator";
+
 export type Gender = "Male" | "Female" | "Transgender";
 
 /**
@@ -31,6 +33,13 @@ export interface FieldTextConfidence {
 export interface AadhaarParseResult {
   /** Whether the text looks like an Aadhaar card at all. */
   documentDetected: boolean;
+  details: AadhaarDetails;
+  confidence: FieldTextConfidence;
+}
+
+export type AadhaarImageBuffers = Record<(typeof IMAGE_FIELDS)[number], Buffer>;
+
+export interface AadhaarExtraction {
   details: AadhaarDetails;
   confidence: FieldTextConfidence;
 }
